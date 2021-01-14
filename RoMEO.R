@@ -1,28 +1,44 @@
-#####
-#Purpose: Extract source table names with respect to target tables 
-#####
+##========================================================##
+##                                                        ##
+##   Retracing of Mapping Explicit to Objects (RoMEO)     ##
+##   Purpose: Extract relevant information from SQL       ##
+##   scripts such as source and target tables             ##
+##                                                        ##
+##   GitHub:                                              ##
+##                                                        ##
+##========================================================##
+
+# ==================== Packages
+# Text mining and data manipulation
 library(dplyr)
 library(tm)
 library(quanteda)
 library(DescTools)
 library(DataCombine)
 library(stringr)
-### Load data
-filepath <- "C:/Users/----/Desktop/"
-filepath2 <- "C:/Users/-----/Desktop/SQLS/"
+# Visualization
+library('visNetwork')
+# EDA
+library(reshape2)
+library(ggplot2)
+# ==================== Set Directory
+filepath <- "C:/Users/DOKHAL/Desktop/"
+filepath2 <- "C:/Users/DOKHAL/Desktop/SQLS/"
 direction <- paste(filepath, "SQLS/output/", sep="")
 
 files <- list.files(path=filepath2, pattern="*.txt", full.names = TRUE, recursive=FALSE)
-
+# -------------------- Prepare final result, quality check and error handling tables for validation purposes
 df <- data.frame(targetTableName=as.character(), sourceTableName=as.character())
 df_qualityCheck <- data.frame(procedure=as.character(), countOfInsert=as.character())
 df_qualityCheckNames <- names(df_qualityCheck)
 
+# ==================== Extraction of Data
 for (i in files) {
+  ### for each sql file an error handling table
   df_errorHandling <- data.frame(romeoStep=as.character(), rawOutput=as.character())
   df_errorHandlingNames <- names(df_errorHandling)
   
-  ### Preparation
+  # -------------------- Text mining preparation
   createCorpus <- function(filepath2) {
     conn <- file(filepath2, "r")
     fulltext <- readLines(conn)
@@ -35,9 +51,9 @@ for (i in files) {
   rawCorpus <- createCorpus(i)
   analysisCorpus <- corpus(rawCorpus)
   
-  ### Extract Source Tables
-  #library(quanteda)
-  procedureName <- corpus_segment(analysisCorpus, pattern = "procedure*") #Segment only for patterns with "procedure"-prefix
+  # START OF TEXT MINING INTELLIGENCE
+  # -------------------- Text Mining: Extraction of PROCEDURE NAME identified by "procedure"-prefix per line
+  procedureName <- corpus_segment(analysisCorpus, pattern = "procedure*") 
   df_temp <- data.frame("1 Extract Pattern of Procedure",procedureName)
   names(df_temp) <- df_errorHandlingNames
   df_errorHandling <- rbind(df_errorHandling, df_temp)
@@ -45,9 +61,10 @@ for (i in files) {
   procedureName <- gsub(" .*","",procedureName)
   procedureName <- procedureName[1]
   
-  insertInto <- corpus_segment(analysisCorpus, pattern = "insert into*") #Segment only for patterns with "insert into"-prefix
+  # -------------------- Text Mining: Extraction of TARGET TABLE NAME identified by "insert into"-prefix per line
+  insertInto <- corpus_segment(analysisCorpus, pattern = "insert into*") 
   insertInto <- data.frame(insertInto)
-  
+  ## ------------------- If there is no valid target table identifiable then noted as "no_target"
   if(nrow(insertInto) == 0){
     insertInto <- "no_target"
   } else { 
@@ -55,53 +72,54 @@ for (i in files) {
   df_temp <- data.frame("2 Extract Pattern of Insert Into",insertInto)
   names(df_temp) <- df_errorHandlingNames
   df_errorHandling <- rbind(df_errorHandling, df_temp)
-  insertInto <- insertInto[!grepl("#|@", insertInto$insertInto),] #Filter all expressions which do not contain #,@
-  insertInto <- gsub("[;]","",insertInto) #Remove ;
+  ## ------------------- Target table identification rule 1: "#" and "@" do not represent valid table names
+  insertInto <- insertInto[!grepl("#|@", insertInto$insertInto),] 
+  insertInto <- gsub("[;]","",insertInto) # Remove ;
   insertInto <- data.frame(insertInto)
-  insertInto$insertInto <- gsub(" .*", "\\1", insertInto[,1]) #Take first word
+  insertInto$insertInto <- gsub(" .*", "\\1", insertInto[,1]) # Take first word
   insertInto$cleanPrep <- StrPos(insertInto[,1], "_", pos = 1)
-  insertInto <- insertInto[grepl("3", insertInto[,2]),] #Filter for position 3
+  ## ------------------- Target table identification rule 2: MUSS NOCHMAL GUCKEN WARUM!!!!
+  insertInto <- insertInto[grepl("3", insertInto[,2]),] # Filter for position 3
   insertInto <- distinct(insertInto)
   insertInto <- insertInto[,1]
   count_temp <- length(insertInto)
   temp_qualityCheck <- data.frame(procedureName, count_temp)
   names(temp_qualityCheck) <- df_qualityCheckNames
+  ## ------------------- If there is no valid target table identifiable then noted as "no_target"
   if(length(insertInto) == 1){
   } else { 
     insertInto <- "no_target"
   }
   targetTableName <- gsub(" .*","",insertInto)
   
-  #if(length(procedureName) == 1){
-  #} else { 
-  #  targetTableName <- data.frame(procedureName)
-  #  targetTableName <- as.character(targetTableName[1,1])
-  #}
-  
-  # Extraction of all source tables
-  x <- corpus_segment(analysisCorpus, pattern = "from*") #Segment only for patterns with "from"-prefix
+  # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "from"-prefix per line
+  x <- corpus_segment(analysisCorpus, pattern = "from*") 
   y <- data.frame(x)
   df_temp <- data.frame("3 Extraction of Source Tables",x)
   names(df_temp) <- df_errorHandlingNames
   df_errorHandling <- rbind(df_errorHandling, df_temp)
+  ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
   y <- y[!grepl("#|@", y$x),] #Filter all expressions which do not contain #,@
-  y <- gsub("[;']","",y) #Remove ;
-  y <- gsub("\\[|\\]", "", y)
-  y <- str_remove_all(y, "[()]")
+  y <- gsub("[;']","",y) # Remove ;
+  y <- gsub("\\[|\\]", "", y) # Remove brackets
+  y <- str_remove_all(y, "[()]") # Remove round brackets
   y <- data.frame(y)
-  y$sourceTableName <- gsub(" .*", "\\1", y[,1]) #Take first word
+  y$sourceTableName <- gsub(" .*", "\\1", y[,1]) # Take first word
+  ## ------------------- Source table identification rule 2: MUSS NOCHMAL GUCKEN WARUM!!!!
   y$cleanPrep <- StrPos(y[,2], "_", pos = 1)
   y <- y[grepl("3", y[,3]),] #Filter for position 3
   y <- distinct(y, sourceTableName) #Filter for distinct sourceTables
-  
+  ## ------------------- If there is no valid source table identifiable then noted as "no_table"
   if(nrow(y) == 0){
-    y <- InsertRow(y, NewRow = "no_tables") #Add note for potential error handling
+    y <- InsertRow(y, NewRow = "no_table")
     names(y) <- c("sourceTableName")
     y <- cbind(targetTableName = targetTableName, y)
   } else { 
-    y <- cbind(targetTableName = targetTableName, y) #Add targetTableName
+    y <- cbind(targetTableName = targetTableName, y) 
   }
+  # END OF TEXT MINING INTELLIGENCE
   
+  # -------------------- Outputs: Make various output tables
   path <- paste(direction,procedureName[1],".csv",sep="")
   write.csv(y, file = path, row.names = FALSE)
   path_error <- paste(direction,procedureName[1],"_errorHandling",".csv",sep="")
@@ -116,11 +134,12 @@ for (i in files) {
   path <- paste(direction,"df",".csv",sep="")
   write.csv(df, file = path, row.names = FALSE)
 }
+
+# ==================== Visualization of Data
 df$targetLayer <- gsub("_.*", "\\1", df[,1]) 
 
-library('visNetwork')
-
-# Create node list
+# -------------------- Data preparation for required input format network visualization
+## ------------------- Nodes
 nodes_1 <- data.frame(df$targetTableName)
 names(nodes_1) <- "nodes"
 nodes_2 <- data.frame(df$sourceTableName)
@@ -129,15 +148,15 @@ nodes <- rbind(nodes_1,nodes_2)
 x <- table(nodes)
 nodes <- data.frame(x)
 names(nodes) <- c("id","frequency")
-nodes$targetLayer <- gsub("_.*", "\\1", nodes[,1]) 
-
+nodes$targetLayer <- gsub("_.*", "\\1", nodes[,1])
+nodes[, 'targetLayer'] <- as.factor(nodes[, 'targetLayer'])
+## ------------------- Links
 from <- data.frame(df$sourceTableName)
 to <- data.frame(df$targetTableName)
 links <- cbind(from,to)
 names(links) <- c("from","to")
 
-nodes[, 'targetLayer'] <- as.factor(nodes[, 'targetLayer'])
-
+# -------------------- Visualization type 1
 vis.nodes <- nodes
 vis.links <- links
 
@@ -156,7 +175,7 @@ vis.nodes$color.highlight.border <- "darkred"
 vis.links$color <- "gray"    # line color  
 vis.links$arrows <- "middle" # arrows: 'from', 'to', or 'middle'
 #https://html-color-codes.info/color-names/
-visnet <- visNetwork(vis.nodes, vis.links) %>%
+visnet <- visNetwork(vis.nodes, vis.links, width = "100%", height = 1000) %>%
   visGroups(groupname = "rl", 
             shape = "icon", icon = list(code = "f0c0", size = 75, color = "RoyalBlue"), shadow = list(enabled = TRUE)) %>% 
   visGroups(groupname = "dm",
@@ -170,3 +189,42 @@ visnet <- visNetwork(vis.nodes, vis.links) %>%
   visLegend(main="Legend", position="right", ncol=1) %>%
   addFontAwesome()
 visOptions(visnet, highlightNearest = TRUE, selectedBy = "targetLayer")
+
+# -------------------- GAMMEL 
+library('igraph')
+
+net <- graph_from_data_frame(d=links, vertices=nodes, directed=T) 
+net
+plot(net, layout=layout_in_circle)
+
+library(threejs)
+library(htmlwidgets)
+library(igraph)
+gjs <- graphjs(net, main="Network!", bg="gray10", showLabels=TRUE, stroke=F, 
+               curvature=0.1, attraction=0.9, repulsion=0.8, opacity=0.9)
+print(gjs)
+saveWidget(gjs, file="Media-Network-gjs.html")
+browseURL("Media-Network-gjs.html")
+
+library('visNetwork')
+vis.nodes <- nodes
+vis.links <- links
+vis.nodes$label  <- vis.nodes$id # Node label
+visNetwork(vis.nodes, vis.links)
+
+# ==================== EDA
+dtm <- DocumentTermMatrix(analysisCorpus)
+dtm.matrix <- as.matrix(dtm)
+wordcount <- colSums(dtm.matrix)
+topten <- head(sort(wordcount, decreasing=TRUE), 20)
+
+dfplot <- as.data.frame(melt(topten))
+dfplot$word <- dimnames(dfplot)[[1]]
+dfplot$word <- factor(dfplot$word,
+                      levels=dfplot$word[order(dfplot$value,
+                                               decreasing=TRUE)])
+
+fig <- ggplot(dfplot, aes(x=word, y=value)) + geom_bar(stat="identity")
+fig <- fig + xlab("Word in Corpus")
+fig <- fig + ylab("Count")
+print(fig)
