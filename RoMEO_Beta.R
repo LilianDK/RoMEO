@@ -23,8 +23,8 @@ library('visNetwork')
 library(reshape2)
 library(ggplot2)
 # ==================== Set Directory
-filepath <- "C:/Users/DOKHAL/Desktop/"
-filepath2 <- "C:/Users/DOKHAL/Desktop/SQLS/"
+filepath <- "C:/Users/--/Desktop/"
+filepath2 <- "C:/Users/--/Desktop/SQLS/"
 direction <- paste(filepath, "SQLS/output/", sep="")
 
 files <- list.files(path=filepath2, pattern="*.txt", full.names = TRUE, recursive=FALSE)
