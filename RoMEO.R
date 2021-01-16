@@ -23,8 +23,8 @@ library('visNetwork')
 library(reshape2)
 library(ggplot2)
 # ==================== Set Directory
-filepath <- "C:/Users/--/Desktop/"
-filepath2 <- "C:/Users/--/Desktop/SQLS/"
+filepath <- "C:/Users/DOKHAL/Desktop/"
+filepath2 <- "C:/Users/DOKHAL/Desktop/SQLS/"
 direction <- paste(filepath, "SQLS/output/", sep="")
 
 files <- list.files(path=filepath2, pattern="*.txt", full.names = TRUE, recursive=FALSE)
@@ -61,7 +61,7 @@ for (i in files) {
   names(df_errorHandling) <- df_errorHandlingNames
   procedureName <- gsub(" .*","",procedureName)
   procedureName <- procedureName[1]
-  
+  procedureName
   # -------------------- Text Mining: Extraction of TARGET TABLE NAME identified by "insert into"-prefix per line
   insertInto <- corpus_segment(analysisCorpus, pattern = "insert into*") 
   insertInto <- data.frame(insertInto)
@@ -73,6 +73,7 @@ for (i in files) {
   df_temp <- data.frame("2 Extract Pattern of Insert Into",insertInto)
   names(df_temp) <- df_errorHandlingNames
   df_errorHandling <- rbind(df_errorHandling, df_temp)
+  insertInto <- data.frame(insertInto)
   ## ------------------- Target table identification rule 1: "#" and "@" do not represent valid table names
   insertInto <- insertInto[grepl("_", insertInto$insertInto),] 
   insertInto <- gsub("[;]","",insertInto) # Remove ;
@@ -92,7 +93,7 @@ for (i in files) {
     insertInto <- "no_target"
   }
   targetTableName <- gsub(" .*","",insertInto)
-  
+  targetTableName
   # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "from"-prefix per line
   x <- corpus_segment(analysisCorpus, pattern = "from*") 
   y <- data.frame(x)
@@ -112,6 +113,9 @@ for (i in files) {
   y$sourceTableName <- gsub(" .*", "\\1", y[,1]) # Take first word
   y <- y[!grepl("#|@", y$y),] 
   y <- distinct(y, sourceTableName) #Filter for distinct sourceTables
+  y <- y[grepl("_", y$sourceTableName),]
+  y <- data.frame(y)
+  names(y) <- "sourceTableName"
   ## ------------------- If there is no valid source table identifiable then noted as "no_table"
   if(nrow(y) == 0){
     y <- InsertRow(y, NewRow = "no_table")
@@ -120,11 +124,11 @@ for (i in files) {
   } else { 
     y <- cbind(targetTableName = targetTableName, y) 
   }
-  
+  y
   # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "join"-prefix per line
   x <- corpus_segment(analysisCorpus, pattern = "join*") 
-  y <- data.frame(x)
-  if(nrow(y) == 0){
+  y2 <- data.frame(x)
+  if(nrow(y2) == 0){
     x <- "no_table"
   } else { 
   }
@@ -132,26 +136,28 @@ for (i in files) {
   names(df_temp) <- df_errorHandlingNames
   df_errorHandling <- rbind(df_errorHandling, df_temp)
   ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
-  y <- y[grepl("_", y$x),] 
-  y <- gsub("[;']","",y) # Remove ;
-  y <- gsub("\\[|\\]", "", y) # Remove brackets
-  y <- str_remove_all(y, "[()]") # Remove round brackets
-  y <- data.frame(y)
-  y$sourceTableName <- gsub(" .*", "\\1", y[,1]) # Take first word
-  y <- y[!grepl("#|@", y$y),] #Filter all expressions which do not contain #,@
-  y <- distinct(y, sourceTableName) #Filter for distinct sourceTables
-  ## ------------------- If there is no valid source table identifiable then noted as "no_table"
-  if(nrow(y) == 0){
-    y <- InsertRow(y, NewRow = "no_table")
-    names(y) <- c("sourceTableName")
-    y <- cbind(targetTableName = targetTableName, y)
+  y2 <- y2[grepl("_", y2$x),] 
+  y2 <- gsub("[;']","",y2) # Remove ;
+  y2 <- gsub("\\[|\\]", "", y2) # Remove brackets
+  y2 <- str_remove_all(y2, "[()]") # Remove round brackets
+  y2 <- data.frame(y2)
+  y2$sourceTableName <- gsub(" .*", "\\1", y2[,1]) # Take first word
+  y2 <- y2[!grepl("#|@", y2$y2),] #Filter all expressions which do not contain #,@
+  y2 <- distinct(y2, sourceTableName) #Filter for distinct sourceTables
+  y2 <- y2[grepl("_", y2$sourceTableName),]
+  y2 <- data.frame(y2)
+  names(y2) <- "sourceTableName"
+  ## ------------------- If there is no valid source table identifiable then noted as ""
+  if(nrow(y2) == 0){
   } else { 
-    y <- cbind(targetTableName = targetTableName, y) 
+    y2 <- cbind(targetTableName = targetTableName, y2) 
   }
+  y2
   # END OF TEXT MINING INTELLIGENCE
   
   # -------------------- Outputs: Make various output tables
   path <- paste(direction,procedureName[1],".csv",sep="")
+  y <- rbind(y,y2)
   write.csv(y, file = path, row.names = FALSE)
   path_error <- paste(direction,procedureName[1],"_errorHandling",".csv",sep="")
   write.csv(df_errorHandling, file = path_error, row.names = FALSE)
@@ -162,7 +168,7 @@ for (i in files) {
   df <- rbind(df,y)
   df_qualityCheck <- rbind(df_qualityCheck, temp_qualityCheck)
   names(df_qualityCheck) <- df_qualityCheckNames 
-  
+  df
   path <- paste(direction,"df",".csv",sep="")
   write.csv(df, file = path, row.names = FALSE)
 }
