@@ -16,14 +16,15 @@ library(quanteda)
 library(DescTools)
 library(DataCombine)
 library(stringr)
+library(stringi)
 # Visualization
 library('visNetwork')
 # EDA
 library(reshape2)
 library(ggplot2)
 # ==================== Set Directory
-filepath <- "C:/Users/DOKHAL/Desktop/"
-filepath2 <- "C:/Users/DOKHAL/Desktop/SQLS/"
+filepath <- "C:/Users/--/Desktop/"
+filepath2 <- "C:/Users/--/Desktop/SQLS/"
 direction <- paste(filepath, "SQLS/output/", sep="")
 
 files <- list.files(path=filepath2, pattern="*.txt", full.names = TRUE, recursive=FALSE)
@@ -73,13 +74,13 @@ for (i in files) {
   names(df_temp) <- df_errorHandlingNames
   df_errorHandling <- rbind(df_errorHandling, df_temp)
   ## ------------------- Target table identification rule 1: "#" and "@" do not represent valid table names
-  insertInto <- insertInto[!grepl("#|@", insertInto$insertInto),] 
+  insertInto <- insertInto[grepl("_", insertInto$insertInto),] 
   insertInto <- gsub("[;]","",insertInto) # Remove ;
   insertInto <- data.frame(insertInto)
   insertInto$insertInto <- gsub(" .*", "\\1", insertInto[,1]) # Take first word
   insertInto$cleanPrep <- StrPos(insertInto[,1], "_", pos = 1)
-  ## ------------------- Target table identification rule 2: MUSS NOCHMAL GUCKEN WARUM!!!!
-  insertInto <- insertInto[grepl("3", insertInto[,2]),] # Filter for position 3
+  insertInto <- insertInto[!grepl("#|@", insertInto$insertInto),] 
+  insertInto <- data.frame(insertInto)
   insertInto <- distinct(insertInto)
   insertInto <- insertInto[,1]
   count_temp <- length(insertInto)
@@ -95,19 +96,49 @@ for (i in files) {
   # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "from"-prefix per line
   x <- corpus_segment(analysisCorpus, pattern = "from*") 
   y <- data.frame(x)
+  if(nrow(y) == 0){
+    y <- "no_table"
+  } else { 
+  }
   df_temp <- data.frame("3 Extraction of Source Tables",x)
   names(df_temp) <- df_errorHandlingNames
   df_errorHandling <- rbind(df_errorHandling, df_temp)
   ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
-  y <- y[!grepl("#|@", y$x),] #Filter all expressions which do not contain #,@
+  y <- y[grepl("_", y$x),] 
   y <- gsub("[;']","",y) # Remove ;
   y <- gsub("\\[|\\]", "", y) # Remove brackets
   y <- str_remove_all(y, "[()]") # Remove round brackets
   y <- data.frame(y)
   y$sourceTableName <- gsub(" .*", "\\1", y[,1]) # Take first word
-  ## ------------------- Source table identification rule 2: MUSS NOCHMAL GUCKEN WARUM!!!!
-  y$cleanPrep <- StrPos(y[,2], "_", pos = 1)
-  y <- y[grepl("3", y[,3]),] #Filter for position 3
+  y <- y[!grepl("#|@", y$y),] 
+  y <- distinct(y, sourceTableName) #Filter for distinct sourceTables
+  ## ------------------- If there is no valid source table identifiable then noted as "no_table"
+  if(nrow(y) == 0){
+    y <- InsertRow(y, NewRow = "no_table")
+    names(y) <- c("sourceTableName")
+    y <- cbind(targetTableName = targetTableName, y)
+  } else { 
+    y <- cbind(targetTableName = targetTableName, y) 
+  }
+  
+  # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "join"-prefix per line
+  x <- corpus_segment(analysisCorpus, pattern = "join*") 
+  y <- data.frame(x)
+  if(nrow(y) == 0){
+    x <- "no_table"
+  } else { 
+  }
+  df_temp <- data.frame("3 Extraction of Source Tables",x)
+  names(df_temp) <- df_errorHandlingNames
+  df_errorHandling <- rbind(df_errorHandling, df_temp)
+  ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
+  y <- y[grepl("_", y$x),] 
+  y <- gsub("[;']","",y) # Remove ;
+  y <- gsub("\\[|\\]", "", y) # Remove brackets
+  y <- str_remove_all(y, "[()]") # Remove round brackets
+  y <- data.frame(y)
+  y$sourceTableName <- gsub(" .*", "\\1", y[,1]) # Take first word
+  y <- y[!grepl("#|@", y$y),] #Filter all expressions which do not contain #,@
   y <- distinct(y, sourceTableName) #Filter for distinct sourceTables
   ## ------------------- If there is no valid source table identifiable then noted as "no_table"
   if(nrow(y) == 0){
@@ -127,22 +158,30 @@ for (i in files) {
   path_quality <- paste(direction,procedureName[1],"_qualityCheck",".csv",sep="")
   write.csv(df_errorHandling, file = path_quality, row.names = FALSE)
   
-  y$procedureName <- procedureName
+  y$procedureName <- as.character(procedureName)
   df <- rbind(df,y)
   df_qualityCheck <- rbind(df_qualityCheck, temp_qualityCheck)
   names(df_qualityCheck) <- df_qualityCheckNames 
+  
   path <- paste(direction,"df",".csv",sep="")
   write.csv(df, file = path, row.names = FALSE)
 }
 
 # ==================== Visualization of Data
-df$targetLayer <- gsub("_.*", "\\1", df[,1]) 
-
 # -------------------- Data preparation for required input format network visualization
+## -------------------- Data preparation: Substring of sourceTableNames containing "ods", e.g. common.ods_xyz to ods_xyz
+df[, 'targetTableName'] <- as.character(df[, 'targetTableName'])
+df[, 'sourceTableName'] <- as.character(df[, 'sourceTableName'])
+df$sourceTableName2 <- substr(df$sourceTableName, regexpr("ods", df$sourceTableName), nchar(df$sourceTableName))
+## -------------------- Data preparation: Substring prefix
+df$targetLayer <- gsub("_.*", "\\1", df[,1]) 
+df$sourceLayer <- gsub("_.*", "\\1", df[,2]) 
+str(df)
 ## ------------------- Nodes
+str(df)
 nodes_1 <- data.frame(df$targetTableName)
 names(nodes_1) <- "nodes"
-nodes_2 <- data.frame(df$sourceTableName)
+nodes_2 <- data.frame(df$sourceTableName2)
 names(nodes_2) <- "nodes"
 nodes <- rbind(nodes_1,nodes_2)
 x <- table(nodes)
@@ -151,7 +190,7 @@ names(nodes) <- c("id","frequency")
 nodes$targetLayer <- gsub("_.*", "\\1", nodes[,1])
 nodes[, 'targetLayer'] <- as.factor(nodes[, 'targetLayer'])
 ## ------------------- Links
-from <- data.frame(df$sourceTableName)
+from <- data.frame(df$sourceTableName2)
 to <- data.frame(df$targetTableName)
 links <- cbind(from,to)
 names(links) <- c("from","to")
