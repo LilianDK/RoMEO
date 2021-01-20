@@ -28,6 +28,9 @@ filepath2 <- "C:/Users/--/Desktop/SQLS/pipe_2_scripts"
 direction <- paste(filepath, "SQLS/output/", sep="")
 
 files <- list.files(path=filepath2, pattern="*.txt", full.names = TRUE, recursive=FALSE)
+# -------------------- Configruation of patterns
+unvalidPattern <- data.frame(c("with", "as"))
+validPattern <- data.frame(c("from", "join"))
 # -------------------- Prepare final result, quality check and error handling tables for validation purposes
 df <- data.frame(targetTableName=as.character(), sourceTableName=as.character())
 df_qualityCheck <- data.frame(procedure=as.character(), countOfInsert=as.character())
@@ -49,10 +52,11 @@ for (i in files) {
     Corpus(vs, readerControl=list(readPlain, language="en", load=TRUE))
   }
   
+  rawCorpus <- createCorpus(files[2]) # just for coding / debugging
   rawCorpus <- createCorpus(i)
   analysisCorpus <- corpus(rawCorpus)
   
-  # START OF TEXT MINING INTELLIGENCE
+  #################### START OF TEXT MINING INTELLIGENCE
   # -------------------- Text Mining: Extraction of PROCEDURE NAME identified by "procedure"-prefix per line
   procedureName <- corpus_segment(analysisCorpus, pattern = "procedure*") 
   df_temp <- data.frame("1 Extract Pattern of Procedure",procedureName)
@@ -62,6 +66,7 @@ for (i in files) {
   procedureName <- gsub(" .*","",procedureName)
   procedureName <- procedureName[1]
   procedureName
+  
   # -------------------- Text Mining: Extraction of TARGET TABLE NAME identified by "insert into"-prefix per line
   insertInto <- corpus_segment(analysisCorpus, pattern = "insert into*") 
   insertInto <- data.frame(insertInto)
@@ -77,6 +82,7 @@ for (i in files) {
   ## ------------------- Target table identification rule 1: "#" and "@" do not represent valid table names
   insertInto <- insertInto[grepl("_", insertInto$insertInto),] 
   insertInto <- gsub("[;]","",insertInto) # Remove ;
+  insertInto <- str_remove_all(insertInto, "[()]") # Remove round brackets
   insertInto <- data.frame(insertInto)
   insertInto$insertInto <- gsub(" .*", "\\1", insertInto[,1]) # Take first word
   insertInto$cleanPrep <- StrPos(insertInto[,1], "_", pos = 1)
@@ -94,14 +100,19 @@ for (i in files) {
   }
   targetTableName <- gsub(" .*","",insertInto)
   targetTableName
-  # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "from"-prefix per line
-  x <- corpus_segment(analysisCorpus, pattern = "from*") 
-  y <- data.frame(x)
+  
+  # -------------------- Text Mining: Extraction of SOURCE TABLE NAME 
+  y <- data.frame(x=as.character())
+  for (i in validPattern){
+    pattern.validPattern <- paste0(i, "*")
+    x <- corpus_segment(analysisCorpus, pattern = pattern.validPattern) 
+    y <- rbind(data.frame(x))
+  }
   if(nrow(y) == 0){
     y <- "no_table"
   } else { 
   }
-  df_temp <- data.frame("3 Extraction of Source Tables",x)
+  df_temp <- data.frame("3 Extraction of Source Tables",y)
   names(df_temp) <- df_errorHandlingNames
   df_errorHandling <- rbind(df_errorHandling, df_temp)
   ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
@@ -124,40 +135,45 @@ for (i in files) {
   } else { 
     y <- cbind(targetTableName = targetTableName, y) 
   }
-  y
-  # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "join"-prefix per line
-  x <- corpus_segment(analysisCorpus, pattern = "join*") 
-  y2 <- data.frame(x)
-  if(nrow(y2) == 0){
-    x <- "no_table"
-  } else { 
+  
+  # -------------------- Text Mining: Extraction of UNVALID PATTERN
+  for (i in unvalidPattern){
+    pattern.unvalidPattern <- paste0(i, "*")
+    df.unvalidPattern <- corpus_segment(analysisCorpus, pattern = pattern.unvalidPattern) 
+    df.unvalidPattern <- data.frame(df.unvalidPattern)
+    ## ------------------- If there is no valid target table identifiable then noted as "no_target"
+    if(nrow(df.unvalidPattern) == 0){
+      df.unvalidPattern <- ""
+    } else { 
+    }
+    df_temp <- data.frame("2 Extract Pattern of UNVALID PATTERN", df.unvalidPattern)
+    names(df_temp) <- df_errorHandlingNames
+    df_errorHandling <- rbind(df_errorHandling, df_temp)
+    ## ------------------- Target table identification rule 1: "#" and "@" do not represent valid table names
+    df.unvalidPattern <- df.unvalidPattern[grepl("_", df.unvalidPattern$df.unvalidPattern),] 
+    df.unvalidPattern <- gsub("[;]","",df.unvalidPattern) # Remove ;
+    df.unvalidPattern <- str_remove_all(df.unvalidPattern, "[()]") # Remove round brackets
+    df.unvalidPattern <- data.frame(df.unvalidPattern)
+    df.unvalidPattern$df.unvalidPattern <- gsub(" .*", "\\1", df.unvalidPattern[,1]) # Take first word
+    df.unvalidPattern$cleanPrep <- StrPos(df.unvalidPattern[,1], "_", pos = 1)
+    df.unvalidPattern <- df.unvalidPattern[!grepl("#|@", df.unvalidPattern$df.unvalidPattern),] 
+    df.unvalidPattern <- data.frame(df.unvalidPattern)
+    df.unvalidPattern <- distinct(df.unvalidPattern)
+    df.unvalidPattern <- df.unvalidPattern[,1]
+    ## ------------------- If there is no valid table identifiable then noted as "no_target"
+    if(length(df.unvalidPattern) == 0){
+      df.unvalidPattern <- ""
+    } else { 
+    }
+    df.unvalidPattern <- data.frame(df.unvalidPattern)
+    names(df.unvalidPattern) <- "sourceTableName"
   }
-  df_temp <- data.frame("3 Extraction of Source Tables",x)
-  names(df_temp) <- df_errorHandlingNames
-  df_errorHandling <- rbind(df_errorHandling, df_temp)
-  ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
-  y2 <- y2[grepl("_", y2$x),] 
-  y2 <- gsub("[;']","",y2) # Remove ;
-  y2 <- gsub("\\[|\\]", "", y2) # Remove brackets
-  y2 <- str_remove_all(y2, "[()]") # Remove round brackets
-  y2 <- data.frame(y2)
-  y2$sourceTableName <- gsub(" .*", "\\1", y2[,1]) # Take first word
-  y2 <- y2[!grepl("#|@", y2$y2),] #Filter all expressions which do not contain #,@
-  y2 <- distinct(y2, sourceTableName) #Filter for distinct sourceTables
-  y2 <- y2[grepl("_", y2$sourceTableName),]
-  y2 <- data.frame(y2)
-  names(y2) <- "sourceTableName"
-  ## ------------------- If there is no valid source table identifiable then noted as ""
-  if(nrow(y2) == 0){
-  } else { 
-    y2 <- cbind(targetTableName = targetTableName, y2) 
-  }
-  y2
-  # END OF TEXT MINING INTELLIGENCE
+  ## ------------------- Removing all unvalid table names
+  y <- y %>% anti_join(df.unvalidPattern, by="sourceTableName")
+  #################### END OF TEXT MINING INTELLIGENCE
   
   # -------------------- Outputs: Make various output tables
   path <- paste(direction,procedureName[1],".csv",sep="")
-  y <- rbind(y,y2)
   write.csv(y, file = path, row.names = FALSE)
   path_error <- paste(direction,procedureName[1],"_errorHandling",".csv",sep="")
   write.csv(df_errorHandling, file = path_error, row.names = FALSE)
@@ -173,6 +189,19 @@ for (i in files) {
   write.csv(df, file = path, row.names = FALSE)
 }
 
+# -------------------- Data preparation
+df[, 'sourceTableName'] <- as.character(df[, 'sourceTableName'])
+df$database <- ifelse(nchar(gsub("[^.]", "", df$sourceTableName))==2, str_extract(df$sourceTableName, "[^.]+"), "")
+
+string <- unique(ifelse(df$database != "", paste0(".*", df$database,"."),""))
+new_string <- as.character()
+for(i in string){
+  new_string <- paste0(new_string, i, "|")
+}
+
+df$schema <- ifelse(nchar(gsub("[^.]", "", df$sourceTableName))== 2, gsub(new_string, "", df$sourceTableName), df$sourceTableName)
+df$schema <- ifelse(nchar(gsub("[^.]", "", df$schema))== 1, sub("\\..*", "", df$schema), "")
+df$table <- sub(".*\\.", "", df$sourceTableName)
 # ==================== Visualization of Data
 # -------------------- Data preparation for required input format network visualization
 ## -------------------- Data preparation: Substring of sourceTableNames containing "ods", e.g. common.ods_xyz to ods_xyz
