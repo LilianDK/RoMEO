@@ -19,15 +19,32 @@ library(stringr)
 library(stringi)
 # Visualization
 library('visNetwork')
+library(collapsibleTree)
 # EDA
 library(reshape2)
 library(ggplot2)
 # ==================== Set Directory
-filepath <- "C:/Users/--/Desktop/"
-filepath2 <- "C:/Users/--/Desktop/SQLS/"
+#sqlCollection <- "pipe_1_scripts"
+#sqlCollection <- "pipe_2_scripts"
+#sqlCollection <- "pipe_3_scripts"
+sqlCollection <- "pipe_4_scripts"
+
+filepath <- "C:/Users/DOKHAL/Desktop/"
+filepath2 <- paste0("C:/Users/DOKHAL/Desktop/SQLS/", sqlCollection)
 direction <- paste(filepath, "SQLS/output/", sep="")
 
 files <- list.files(path=filepath2, pattern="*.txt", full.names = TRUE, recursive=FALSE)
+files <- list.files(path=filepath2, pattern="*.sql", full.names = TRUE, recursive=FALSE)
+
+# -------------------- Configuration of patterns
+unvalidPattern <- data.frame(c("with"))
+validPattern <- data.frame(c("from", "join"))
+df.unvalidPatternSum <- data.frame(as.character())
+
+# -------------------- Configuration of hierarchies
+hierarchyIdentifier <- c("reportObject", "rl", "dm", "cl", "ods", "sl")
+hierarchyIndex <- c("1", "2", "3", "4", "5", "6") 
+
 # -------------------- Prepare final result, quality check and error handling tables for validation purposes
 df <- data.frame(targetTableName=as.character(), sourceTableName=as.character())
 df_qualityCheck <- data.frame(procedure=as.character(), countOfInsert=as.character())
@@ -49,130 +66,298 @@ for (i in files) {
     Corpus(vs, readerControl=list(readPlain, language="en", load=TRUE))
   }
   
+  #rawCorpus <- createCorpus(files[1]) # just for coding / debugging
   rawCorpus <- createCorpus(i)
   analysisCorpus <- corpus(rawCorpus)
   
-  # START OF TEXT MINING INTELLIGENCE
+  #################### START OF TEXT MINING INTELLIGENCE
   # -------------------- Text Mining: Extraction of PROCEDURE NAME identified by "procedure"-prefix per line
   procedureName <- corpus_segment(analysisCorpus, pattern = "procedure*") 
-  df_temp <- data.frame("1 Extract Pattern of Procedure",procedureName)
-  names(df_temp) <- df_errorHandlingNames
-  df_errorHandling <- rbind(df_errorHandling, df_temp)
-  names(df_errorHandling) <- df_errorHandlingNames
-  procedureName <- gsub(" .*","",procedureName)
-  procedureName <- procedureName[1]
-  procedureName
-  # -------------------- Text Mining: Extraction of TARGET TABLE NAME identified by "insert into"-prefix per line
-  insertInto <- corpus_segment(analysisCorpus, pattern = "insert into*") 
-  insertInto <- data.frame(insertInto)
-  ## ------------------- If there is no valid target table identifiable then noted as "no_target"
-  if(nrow(insertInto) == 0){
-    insertInto <- "no_target"
-  } else { 
-  }
-  df_temp <- data.frame("2 Extract Pattern of Insert Into",insertInto)
-  names(df_temp) <- df_errorHandlingNames
-  df_errorHandling <- rbind(df_errorHandling, df_temp)
-  insertInto <- data.frame(insertInto)
-  ## ------------------- Target table identification rule 1: "#" and "@" do not represent valid table names
-  insertInto <- insertInto[grepl("_", insertInto$insertInto),] 
-  insertInto <- gsub("[;]","",insertInto) # Remove ;
-  insertInto <- data.frame(insertInto)
-  insertInto$insertInto <- gsub(" .*", "\\1", insertInto[,1]) # Take first word
-  insertInto$cleanPrep <- StrPos(insertInto[,1], "_", pos = 1)
-  insertInto <- insertInto[!grepl("#|@", insertInto$insertInto),] 
-  insertInto <- data.frame(insertInto)
-  insertInto <- distinct(insertInto)
-  insertInto <- insertInto[,1]
-  count_temp <- length(insertInto)
-  temp_qualityCheck <- data.frame(procedureName, count_temp)
-  names(temp_qualityCheck) <- df_qualityCheckNames
-  ## ------------------- If there is no valid target table identifiable then noted as "no_target"
-  if(length(insertInto) == 1){
-  } else { 
-    insertInto <- "no_target"
-  }
-  targetTableName <- gsub(" .*","",insertInto)
-  targetTableName
-  # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "from"-prefix per line
-  x <- corpus_segment(analysisCorpus, pattern = "from*") 
-  y <- data.frame(x)
-  if(nrow(y) == 0){
-    y <- "no_table"
-  } else { 
-  }
-  df_temp <- data.frame("3 Extraction of Source Tables",x)
-  names(df_temp) <- df_errorHandlingNames
-  df_errorHandling <- rbind(df_errorHandling, df_temp)
-  ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
-  y <- y[grepl("_", y$x),] 
-  y <- gsub("[;']","",y) # Remove ;
-  y <- gsub("\\[|\\]", "", y) # Remove brackets
-  y <- str_remove_all(y, "[()]") # Remove round brackets
-  y <- data.frame(y)
-  y$sourceTableName <- gsub(" .*", "\\1", y[,1]) # Take first word
-  y <- y[!grepl("#|@", y$y),] 
-  y <- distinct(y, sourceTableName) #Filter for distinct sourceTables
-  y <- y[grepl("_", y$sourceTableName),]
-  y <- data.frame(y)
-  names(y) <- "sourceTableName"
-  ## ------------------- If there is no valid source table identifiable then noted as "no_table"
-  if(nrow(y) == 0){
-    y <- InsertRow(y, NewRow = "no_table")
-    names(y) <- c("sourceTableName")
-    y <- cbind(targetTableName = targetTableName, y)
-  } else { 
-    y <- cbind(targetTableName = targetTableName, y) 
-  }
-  y
-  # -------------------- Text Mining: Extraction of SOURCE TABLE NAME identified by "join"-prefix per line
-  x <- corpus_segment(analysisCorpus, pattern = "join*") 
-  y2 <- data.frame(x)
-  if(nrow(y2) == 0){
-    x <- "no_table"
-  } else { 
-  }
-  df_temp <- data.frame("3 Extraction of Source Tables",x)
-  names(df_temp) <- df_errorHandlingNames
-  df_errorHandling <- rbind(df_errorHandling, df_temp)
-  ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
-  y2 <- y2[grepl("_", y2$x),] 
-  y2 <- gsub("[;']","",y2) # Remove ;
-  y2 <- gsub("\\[|\\]", "", y2) # Remove brackets
-  y2 <- str_remove_all(y2, "[()]") # Remove round brackets
-  y2 <- data.frame(y2)
-  y2$sourceTableName <- gsub(" .*", "\\1", y2[,1]) # Take first word
-  y2 <- y2[!grepl("#|@", y2$y2),] #Filter all expressions which do not contain #,@
-  y2 <- distinct(y2, sourceTableName) #Filter for distinct sourceTables
-  y2 <- y2[grepl("_", y2$sourceTableName),]
-  y2 <- data.frame(y2)
-  names(y2) <- "sourceTableName"
-  ## ------------------- If there is no valid source table identifiable then noted as ""
-  if(nrow(y2) == 0){
-  } else { 
-    y2 <- cbind(targetTableName = targetTableName, y2) 
-  }
-  y2
-  # END OF TEXT MINING INTELLIGENCE
-  
-  # -------------------- Outputs: Make various output tables
-  path <- paste(direction,procedureName[1],".csv",sep="")
-  y <- rbind(y,y2)
-  write.csv(y, file = path, row.names = FALSE)
-  path_error <- paste(direction,procedureName[1],"_errorHandling",".csv",sep="")
-  write.csv(df_errorHandling, file = path_error, row.names = FALSE)
-  path_quality <- paste(direction,procedureName[1],"_qualityCheck",".csv",sep="")
-  write.csv(df_errorHandling, file = path_quality, row.names = FALSE)
-  
-  y$procedureName <- as.character(procedureName)
-  df <- rbind(df,y)
-  df_qualityCheck <- rbind(df_qualityCheck, temp_qualityCheck)
-  names(df_qualityCheck) <- df_qualityCheckNames 
-  df
-  path <- paste(direction,"df",".csv",sep="")
-  write.csv(df, file = path, row.names = FALSE)
+  if (length(procedureName)>0) { # start of dirty hack
+    df_temp <- data.frame("1 Extract Pattern of Procedure",procedureName)
+    names(df_temp) <- df_errorHandlingNames
+    df_errorHandling <- rbind(df_errorHandling, df_temp)
+    names(df_errorHandling) <- df_errorHandlingNames
+    procedureName <- gsub(" .*","",procedureName)
+    procedureName <- procedureName[1]
+    procedureName
+    
+    # -------------------- Text Mining: Extraction of TARGET TABLE NAME identified by "insert into"-prefix per line
+    insertInto <- corpus_segment(analysisCorpus, pattern = "insert into*") 
+    insertInto <- data.frame(insertInto)
+    ## ------------------- If there is no valid target table identifiable then noted as "no_target"
+    if(nrow(insertInto) == 0){
+      insertInto <- "no_target"
+    } else { 
+    }
+    df_temp <- data.frame("2 Extract Pattern of Insert Into",insertInto)
+    names(df_temp) <- df_errorHandlingNames
+    df_errorHandling <- rbind(df_errorHandling, df_temp)
+    insertInto <- data.frame(insertInto)
+    
+    ## ------------------- Target table identification rule 1: "#" and "@" do not represent valid table names
+    insertInto <- insertInto[grepl("_", insertInto$insertInto),] 
+    insertInto <- gsub("[;]","",insertInto) # Remove ;
+    insertInto <- gsub("\\[|\\]", "", insertInto) # Remove brackets
+    insertInto <- str_remove_all(insertInto, "[()]") # Remove round brackets
+    insertInto <- data.frame(insertInto)
+    insertInto$insertInto <- gsub(" .*", "\\1", insertInto[,1]) # Take first word
+    insertInto$cleanPrep <- StrPos(insertInto[,1], "_", pos = 1)
+    insertInto <- insertInto[!grepl("#|@", insertInto$insertInto),] 
+    insertInto <- data.frame(insertInto)
+    insertInto <- distinct(insertInto)
+    insertInto <- insertInto[,1]
+    count_temp <- length(insertInto)
+    temp_qualityCheck <- data.frame(procedureName, count_temp)
+    names(temp_qualityCheck) <- df_qualityCheckNames
+    ## ------------------- If there is no valid target table identifiable then noted as "no_target"
+    if(length(insertInto) == 1){
+    } else { 
+      insertInto <- "no_target"
+    }
+    targetTableName <- gsub(" .*","",insertInto)
+    targetTableName
+    
+    # -------------------- Text Mining: Extraction of SOURCE TABLE NAME 
+    y <- data.frame(x=as.character())
+    for (i in validPattern){
+      pattern.validPattern <- paste0(i, "*")
+      x <- corpus_segment(analysisCorpus, pattern = pattern.validPattern) 
+      y <- rbind(data.frame(x))
+    }
+    if(nrow(y) == 0){
+      y <- "no_table"
+    } else { 
+    }
+    df_temp <- data.frame("3 Extraction of Source Tables",y)
+    names(df_temp) <- df_errorHandlingNames
+    df_errorHandling <- rbind(df_errorHandling, df_temp)
+    ## ------------------- Source table identification rule 1: "#" and "@" do not represent valid table names
+    y <- y[grepl("_", y$x),] 
+    y <- gsub("[;']","",y) # Remove ;
+    y <- gsub("[,']","",y) # Remove ,
+    y <- gsub("\\[|\\]", "", y) # Remove brackets
+    y <- str_remove_all(y, "[()]") # Remove round brackets
+    y <- data.frame(y)
+    #y$sourceTableName <- gsub(" .*", "\\1", y[,1]) # Take first word
+    y$sourceTableName <- sub("\\s.*","", y[,1])# Take first word
+    y <- y[!grepl("#|@", y$y),] 
+    y <- distinct(y, sourceTableName) #Filter for distinct sourceTables
+    y <- y[grepl("_", y$sourceTableName),]
+    y <- data.frame(y)
+    names(y) <- "sourceTableName"
+    ## ------------------- If there is no valid source table identifiable then noted as "no_table"
+    if(nrow(y) == 0){
+      y <- InsertRow(y, NewRow = "no_table")
+      names(y) <- c("sourceTableName")
+      y <- cbind(targetTableName = targetTableName, y)
+    } else { 
+      y <- cbind(targetTableName = targetTableName, y) 
+    }
+    
+    # -------------------- Text Mining: Extraction of UNVALID PATTERN
+    for (i in unvalidPattern){
+      pattern.unvalidPattern <- paste0(i, "*")
+      df.unvalidPattern <- corpus_segment(analysisCorpus, pattern = pattern.unvalidPattern) 
+      df.unvalidPattern <- data.frame(df.unvalidPattern)
+      ## ------------------- If there is no valid target table identifiable then noted as "no_target"
+      if(nrow(df.unvalidPattern) == 0){
+        df.unvalidPattern <- ""
+      } else { 
+      }
+      df_temp <- data.frame("2 Extract Pattern of UNVALID PATTERN", df.unvalidPattern)
+      names(df_temp) <- df_errorHandlingNames
+      df_errorHandling <- rbind(df_errorHandling, df_temp)
+      ## ------------------- Target table identification rule 1: "#" and "@" do not represent valid table names
+      #df.unvalidPattern <- df.unvalidPattern[grepl("_", df.unvalidPattern$df.unvalidPattern),] 
+      df.unvalidPattern <- gsub("[;]","",df.unvalidPattern) # Remove ;
+      df.unvalidPattern <- str_remove_all(df.unvalidPattern, "[()]") # Remove round brackets
+      df.unvalidPattern <- data.frame(df.unvalidPattern)
+      df.unvalidPattern$df.unvalidPattern <- gsub(" .*", "\\1", df.unvalidPattern[,1]) # Take first word
+      df.unvalidPattern$cleanPrep <- StrPos(df.unvalidPattern[,1], "_", pos = 1)
+      df.unvalidPattern <- df.unvalidPattern[!grepl("#|@", df.unvalidPattern$df.unvalidPattern),] 
+      df.unvalidPattern <- data.frame(df.unvalidPattern)
+      df.unvalidPattern <- distinct(df.unvalidPattern)
+      df.unvalidPattern <- df.unvalidPattern[,1]
+      ## ------------------- If there is no valid table identifiable then noted as "no_target"
+      if(length(df.unvalidPattern) == 0){
+        df.unvalidPattern <- ""
+      } else { 
+      }
+      df.unvalidPattern <- data.frame(df.unvalidPattern)
+      names(df.unvalidPattern) <- "sourceTableName"
+    }
+    df.unvalidPatternSum <- rbind(df.unvalidPatternSum, df.unvalidPattern)
+    #################### END OF TEXT MINING INTELLIGENCE
+    y$procedureName <- as.character(procedureName)
+    df <- rbind(df,y)
+    # -------------------- Outputs: Make various output tables
+    path <- paste(direction,procedureName[1],".csv",sep="")
+    write.csv(y, file = path, row.names = FALSE)
+    path_error <- paste(direction,procedureName[1],"_errorHandling",".csv",sep="")
+    write.csv(df_errorHandling, file = path_error, row.names = FALSE)
+    path_quality <- paste(direction,procedureName[1],"_qualityCheck",".csv",sep="")
+    write.csv(df_errorHandling, file = path_quality, row.names = FALSE)
+    
+    df_qualityCheck <- rbind(df_qualityCheck, temp_qualityCheck)
+    names(df_qualityCheck) <- df_qualityCheckNames 
+    
+    path <- paste(direction,"df",".csv",sep="")
+    write.csv(df, file = path, row.names = FALSE)
+  }else{} # end of dirty hack
 }
 
+# ==================== Post Processing of Data
+## ------------------- Removing all unvalid table names
+df <- df %>% anti_join(df.unvalidPatternSum, by="sourceTableName")
+
+# -------------------- Decomposing Database.Schema.Tablename
+df[, 'sourceTableName'] <- as.character(df[, 'sourceTableName'])
+df$sourceDatabase <- ifelse(nchar(gsub("[^.]", "", df$sourceTableName))==2, str_extract(df$sourceTableName, "[^.]+"), "")
+df$targetDatabase <- ifelse(nchar(gsub("[^.]", "", df$targetTableName))==2, str_extract(df$targetTableName, "[^.]+"), "")
+
+string <- unique(ifelse(df$sourceDatabase != "", paste0(".*", df$sourceDatabase,"\\."),""))
+new_string <- as.character()
+if (length(string) == 1){
+  new_string <- string
+}else{
+  for(i in string){
+    new_string <- paste0(new_string, i, "|")
+  }
+}
+
+string <- unique(ifelse(df$targetDatabase != "", paste0(".*", df$targetDatabase,"\\."),""))
+new_string2 <- as.character()
+if (length(string) == 1){
+  new_string2 <- string
+}else{
+  for(i in string){
+    new_string2 <- paste0(new_string2, i, "|")
+  }
+}
+
+df$sourceSchema <- ifelse(nchar(gsub("[^.]", "", df$sourceTableName))== 2, gsub(new_string, "", df$sourceTableName), df$sourceTableName)
+df$sourceSchema <- ifelse(nchar(gsub("[^.]", "", df$sourceSchema))== 1, sub("\\..*", "", df$sourceSchema), "")
+df$targetSchema <- ifelse(nchar(gsub("[^.]", "", df$targetTableName))== 2, gsub(new_string, "", df$targetTableName), df$targetTableName)
+df$targetSchema <- ifelse(nchar(gsub("[^.]", "", df$targetSchema))== 1, sub("\\..*", "", df$targetSchema), "")
+df$sourceTable <- sub(".*\\.", "", df$sourceTableName)
+df$targetTable <- sub(".*\\.", "", df$targetTableName)
+df$targetLayer <- sub("_.*", "", df$targetTableName)
+df$sourceLayer <- sub("_.*", "", df$sourceSchema)
+
+# -------------------- Customized Cleaning Rules
+if (sqlCollection == "pipe_1_scripts"){
+  df <- df[!df$sourceTableName == "invalid_",]
+  df <- df[!df$sourceTableName == "unavailable_",]
+  df$key <- paste0(df$sourceSchema,".",df$sourceTable)
+  dfTarget <- df[,c(1,3,4,11,12)]
+  newNames.target <- c("reportObject", "procedureName_Hosting", "sourceDatabase", "sourceLayer","sourceTableName")
+  names(dfTarget) <- newNames.target
+  vis.data <- dfTarget
+  str(vis.data)
+  romeo.vis <- collapsibleTree(df = vis.data, 
+                               hierarchy = newNames.target,
+                               linkLength = 200,
+                               fontsize = 5,
+                               tooltip = TRUE,
+                               collapsed = TRUE,
+                               zoomable = TRUE,
+                               width = 2000,
+                               height = 2500)
+  romeo.vis
+}
+
+# -------------------- Customized Cleaning Rules
+if (sqlCollection == "pipe_3_scripts"){
+  df <- df[!df$sourceSchema == "",] # if there is no sourceSchema then the entry is possibly just a supporting table
+  df <- df[!df$sourceSchema == "maxeie",] # not a valid sourceSchema name
+  df <- df[!df$sourceSchema == "sys",] # not a valid sourceSchema name
+  df <- df[!df$sourceSchema == "eie",] # not a valid sourceSchema name
+  df <- df[!df$sourceSchema == "dba",] # not a valid sourceSchema name
+  df <- df[!df$sourceSchema == "ebiengmt",] # not a valid sourceSchema name
+  df <- df[!df$sourceSchema == "eie_act",] # not a valid sourceSchema name
+  df <- df[!df$sourceSchema == "eie_ter",] # not a valid sourceSchema name
+  df <- df[!df$sourceDatabase == "dbkamp",] # not a valid database name
+  df <- df[!df$sourceDatabase == "mam",] # not a valid database name
+  df <- df[!df$sourceTableName == "ch_delta",] # not a valid sourcetablename
+  
+  df$key <- paste0(df$sourceSchema,".",df$sourceTable)
+  dfSource <- df[,c(10,1,3,4,11,12)]
+  newNames.Source <- c("targetLayer", "sourceTableName", "procedureName_EBI", "sourceDatabase_EBI", "sourceLayer","key")
+  names(dfSource) <- newNames.Source
+  dfSource$sourceDatabase_EBI[dfSource$sourceDatabase_EBI==""]<- "NA"
+  vis.data <- dfSource
+  
+  vis.data$sourceDatabase_EBI[vis.data$sourceDatabase_EBI==""]<- "NA"
+  
+  str(vis.data)
+  romeo.vis <- collapsibleTree(df = vis.data, 
+                               hierarchy = newNames.Source,
+                               linkLength = 200,
+                               fontsize = 5,
+                               tooltip = TRUE,
+                               collapsed = TRUE,
+                               zoomable = TRUE,
+                               width = 2000,
+                               height = 2500)
+  romeo.vis
+}
+
+# -------------------- Merge level 1
+dfTotal <- dfTarget %>% merge(dfSource, by="sourceTableName")
+dfTotal_anti <- dfTarget %>% anti_join(dfSource, by="sourceTableName")
+tempNames <- names(dfTotal)
+names(dfTotal) <- c("lvl1", "reportObject", "procedureName_Hosting", "sourceDatabase_Hosting", "procedureName_EBIlvl1", "sourceDatabase_EBIlvl1", "key")
+
+# -------------------- Merge level 2
+names(dfTotal) <- c("lvl1", "reportObject", "procedureName_Hosting", "sourceDatabase_Hosting", "procedureName_EBIlvl1", "sourceDatabase_EBIlvl1", "sourceTableName")
+dfTotal <- dfTotal %>% merge(dfSource, by="sourceTableName")
+tempNames <- names(dfTotal)
+names(dfTotal) <- c("lvl2", "lvl1", "reportObject", "procedureName_Hosting", "sourceDatabase_Hosting", "procedureName_EBIlvl1", "sourceDatabase_EBIlvl1", "procedureName_EBIlvl2"
+                    , "sourceDatabase_EBIlvl2", "keys")
+
+dfTotal <- dfTotal %>% merge(df, by="sourceTableName")
+names(dfTotal) <- c("lvl2", "lvl1", "reportObjects", "procedureName_Hosting", "sourceDatabase_lvl1", "procedureName_EBIlvl1", "sourceDatabase_EBIlvl1",
+                    "sourceTableName", "procedureName_EBIlvl2", "sourceDatabase_EBIlvl2")
+
+dfTotal$delete <- ifelse(dfTotal$sourceTableName==dfTotal$lvl1,1,0)
+dfTotal <- filter(dfTotal, dfTotal$delete == 0)
+dfTotal$delete <- substring(dfTotal$sourceTableName2, 1, 1)
+dfTotal <- filter(dfTotal, dfTotal$delete != ".")
+dfTotal <- filter(dfTotal, dfTotal$delete != "e")
+dfTotal <- filter(dfTotal, dfTotal$delete != "m")
+
+dfTotal <- dfTotal %>% merge(df, by="sourceTableName")
+names(dfTotal) <- c("lvl3", "lvl2", "lvl1", "reportObjects", "procedureName_Hosting", "sourceDatabase_lvl1", "procedureName_EBIlvl1", "sourceDatabase_EBIlvl1",
+                    "procedureName_EBIlvl2", "sourceDatabase_EBIlvl2", "sourceTableName", "procedureName_EBIlvl3", "sourceDatabase_EBIlvl3")
+
+dfTotal <- dfTotal %>% merge(df, by="sourceTableName")
+names(dfTotal) <- c("lvl4", "lvl3", "lvl2", "lvl1", "reportObjects", "procedureName_Hosting", "sourceDatabase_lvl1", "procedureName_EBIlvl1", "sourceDatabase_EBIlvl1",
+                    "procedureName_EBIlvl2", "sourceDatabase_EBIlvl2", "procedureName_EBIlvl3", "sourceDatabase_EBIlvl3",
+                    "sourceTableName", "procedureName_EBIlvl4", "sourceDatabase_EBIlvl4")
+
+dfTotal <- dfTotal %>% merge(df, by="sourceTableName")
+names(dfTotal) <- c("lvl4", "lvl3", "lvl2", "lvl1", "reportObjects", "procedureName_Hosting", "sourceDatabase_lvl1", "procedureName_EBIlvl1", "sourceDatabase_EBIlvl1",
+                    "procedureName_EBIlvl2", "sourceDatabase_EBIlvl2", "procedureName_EBIlvl3", "sourceDatabase_EBIlvl3",
+                    "sourceTableName", "procedureName_EBIlvl4", "sourceDatabase_EBIlvl4")
+
+
+# -------------------- First level merge
+df$sourceTableName <- paste0(df$sourceSchema,".",df$sourceTable)
+
+
+# -------------------- First level merge
+dfLevel <- df[df$targetLayer == hierarchyIdentifier[2],]
+dfLevel$sourceTableName <- paste0(dfLevel$sourceSchema,".",dfLevel$sourceTable)
+dfLevel <- dfLevel[,c(1:4)]
+names(dfLevel) <- c("sourceTableName", "sourceTableName2","procedureName","sourceDatabase")
+dfTotal <- dfTarget %>% merge(dfLevel, by="sourceTableName")
+
+dfTotal <- dfTarget %>% merge(df1, by ="targetTableName")
+df3 <- df %>% merge(df2, by="sourceTableName")
+df1 <- df
+df2 <- rbind(df1, df)
+df2$sourceTableName2 <- paste0(df2$sourceSchema, ".",df2$sourceTable)
 # ==================== Visualization of Data
 # -------------------- Data preparation for required input format network visualization
 ## -------------------- Data preparation: Substring of sourceTableNames containing "ods", e.g. common.ods_xyz to ods_xyz
@@ -182,47 +367,112 @@ df$sourceTableName2 <- substr(df$sourceTableName, regexpr("ods", df$sourceTableN
 ## -------------------- Data preparation: Substring prefix
 df$targetLayer <- gsub("_.*", "\\1", df[,1]) 
 df$sourceLayer <- gsub("_.*", "\\1", df[,2]) 
-str(df)
+## -------------------- Data preparation: Hierarchy preparation
+tmp <- ifelse(is.na(str_locate(df$sourceTableName2, "\\.")) , df$sourceTableName2, unlist(strsplit(df$sourceTableName2, "\\.")))
+tmp <- matrix(tmp , ncol = 2 , byrow = TRUE)
+tmp <- ifelse(str_detect(tmp[,1], "ods") == TRUE, 
+              sub('_([^_]*)$', '', tmp[,1]), 
+              gsub("_.*", "\\1", tmp[,1]))
+tmp <- data.frame(tmp)
+names(tmp) <- "sourceTableName3"
+#unique.tmp <- unique(tmp)
+#unique.targetLayer <- data.frame(unique(df$targetLayer))
+df <- cbind(df, tmp)
+df[, 'sourceTableName3'] <- as.character(df[, 'sourceTableName3'])
+
+prep1 <- df$targetTableName
+prep2 <- ifelse(gsub("_.*", "\\1", prep1) == "rl",prep1,gsub("_.*", "\\1", prep1))
+prep2 <- data.frame(prep2)
+names(prep2) <- "targetLayer2"
+df <- cbind(df, prep2)
+df[, 'targetLayer2'] <- as.character(df[, 'targetLayer2'])
+
+write.csv(vis.data, file = path, row.names = FALSE)
 ## ------------------- Nodes
-str(df)
+### -- Version 1
+#nodes_1 <- data.frame(df$targetLayer2)
 nodes_1 <- data.frame(df$targetTableName)
-names(nodes_1) <- "nodes"
-nodes_2 <- data.frame(df$sourceTableName2)
-names(nodes_2) <- "nodes"
+names(nodes_1) <- c("nodes_v1")
+#nodes_2 <- data.frame(df$sourceTableName3)
+nodes_2 <- data.frame(df$sourceTableName)
+names(nodes_2) <- c("nodes_v1")
 nodes <- rbind(nodes_1,nodes_2)
 x <- table(nodes)
-nodes <- data.frame(x)
-names(nodes) <- c("id","frequency")
-nodes$targetLayer <- gsub("_.*", "\\1", nodes[,1])
-nodes[, 'targetLayer'] <- as.factor(nodes[, 'targetLayer'])
+nodes_v1 <- data.frame(x)
+names(nodes_v1) <- c("id","frequency")
+
+nodes_v1[,1] <- gsub("common.","",nodes_v1[,1])
+nodes_v1[,1] <- gsub("hosting.","",nodes_v1[,1])
+nodes_v1[,1] <- gsub("access.","",nodes_v1[,1])
+nodes_v1$targetLayer <- gsub("_.*", "\\1", nodes_v1[,1])
+nodes_v1[, 'targetLayer'] <- as.factor(nodes_v1[, 'targetLayer'])
+### -- Version 2
+nodes_3 <- data.frame(df$targetTableName)
+nodes_3 <- Map(paste, 'cube_', nodes_3)
+nodes_3 <- data.frame(nodes_3)
+names(nodes_3) <- c("nodes_v2")
+nodes_4 <- data.frame(df$sourceTableName)
+names(nodes_4) <- c("nodes_v2")
+nodes <- rbind(nodes_3,nodes_4)
+x <- table(nodes)
+nodes_v2 <- data.frame(x)
+names(nodes_v2) <- c("id","frequency")
+
+nodes_v2[,1] <- gsub("hosting.","",nodes_v2[,1])
+nodes_v2[,1] <- gsub("\\bproms.\\b","ods_proms.",nodes_v2[,1])
+nodes_v2$targetLayer <- gsub("_.*", "\\1", nodes_v2[,1])
+nodes_v2[, 'targetLayer'] <- as.factor(nodes_v2[, 'targetLayer'])
 ## ------------------- Links
-from <- data.frame(df$sourceTableName2)
-to <- data.frame(df$targetTableName)
-links <- cbind(from,to)
-names(links) <- c("from","to")
+### Version 1
+#from_1 <- data.frame(df$sourceTableName3)
+from_1 <- data.frame(df$sourceTableName)
+#to_1 <- data.frame(df$targetLayer2)
+to_1 <- data.frame(df$targetTableName)
+links_v1 <- cbind(from_1,to_1)
+names(links_v1) <- c("from","to")
+links_v1[,1] <- gsub("common.","",links_v1[,1])
+links_v1[,1] <- gsub("hosting.","",links_v1[,1])
+links_v1[,1] <- gsub("access.","",links_v1[,1])
+### Version 2
+from_2 <- data.frame(df$sourceTableName)
+to_2 <- data.frame(df$targetTableName)
+to_2 <- Map(paste, 'cube_', to_2)
+to_2 <- data.frame(to_2)
+links_v2 <- cbind(from_2,to_2)
+names(links_v2) <- c("from","to")
+links_v2[,1] <- gsub("hosting.","",links_v2[,1])
+links_v2[,1] <- gsub("\\bproms.\\b","ods_proms.",links_v2[,1])
+# -------------------- Visualization type 1.1
+vis.nodes_1 <- nodes_v1
+vis.links_1 <- links_v1
 
-# -------------------- Visualization type 1
-vis.nodes <- nodes
-vis.links <- links
+vis.links_1<- vis.links_1 %>%
+  filter(#vis.links_1$from == "cl" | 
+    #vis.links_1$from == "dm"| 
+    #vis.links_1$from == "rl"|
+    str_detect(vis.links_1$from, "ods") == TRUE)
 
-vis.nodes$group <- vis.nodes$targetLayer
+vis.nodes_1$group <- vis.nodes_1$targetLayer
 
-vis.nodes$shadow <- TRUE # Nodes will drop shadow
-vis.nodes$title  <- vis.nodes$id # Text on click
-vis.nodes$label  <- vis.nodes$id # Node label
-#vis.nodes$size   <- vis.nodes$frequency # Node size
-vis.nodes$borderWidth <- 2 # Node border width
+vis.nodes_1$shadow <- TRUE # Nodes will drop shadow
+vis.nodes_1$title  <- vis.nodes_1$id # Text on click
+vis.nodes_1$label  <- vis.nodes_1$id # Node label
+#vis.nodes_1$size   <- vis.nodes_1$frequency # Node size
+vis.nodes_1$borderWidth <- 2 # Node border width
 
-#vis.nodes$color.border <- "black"
-vis.nodes$color.highlight.background <- "pink"
-vis.nodes$color.highlight.border <- "darkred"
+#vis.nodes_1$color.border <- "black"
+vis.nodes_1$color.highlight.background <- "pink"
+vis.nodes_1$color.highlight.border <- "darkred"
 
-vis.links$color <- "gray"    # line color  
-vis.links$arrows <- "middle" # arrows: 'from', 'to', or 'middle'
+vis.links_1$color <- "gray"    # line color  
+vis.links_1$arrows <- "middle" # arrows: 'from', 'to', or 'middle'
+
+vis.nodes_1 <- vis.nodes_1[!duplicated(vis.nodes_1$id), ]
+
 #https://html-color-codes.info/color-names/
-visnet <- visNetwork(vis.nodes, vis.links, width = "100%", height = 1000) %>%
+visnet <- visNetwork(vis.nodes_1, vis.links_1, width = "100%", height = 1000) %>%
   visGroups(groupname = "rl", 
-            shape = "icon", icon = list(code = "f0c0", size = 75, color = "RoyalBlue"), shadow = list(enabled = TRUE)) %>% 
+            shape = "icon", icon = list(code = "f0c0", size = 75, color = "SkyBlue"), shadow = list(enabled = TRUE)) %>% 
   visGroups(groupname = "dm",
             shape = "icon", icon = list(code = "f1b2", size = 75, color = "SkyBlue"), shadow = list(enabled = TRUE)) %>% 
   visGroups(groupname = "cl",
@@ -235,6 +485,103 @@ visnet <- visNetwork(vis.nodes, vis.links, width = "100%", height = 1000) %>%
   addFontAwesome()
 visOptions(visnet, highlightNearest = TRUE, selectedBy = "targetLayer")
 
+# -------------------- Visualization type 1.2
+vis.nodes_2 <- nodes_v2
+vis.links_2 <- links_v2
+
+vis.nodes_2$group <- vis.nodes_2$targetLayer
+
+vis.nodes_2$shadow <- TRUE # Nodes will drop shadow
+vis.nodes_2$title  <- vis.nodes_2$id # Text on click
+vis.nodes_2$label  <- vis.nodes_2$id # Node label
+#vis.nodes_2$size   <- vis.nodes_2$frequency # Node size
+vis.nodes_2$borderWidth <- 2 # Node border width
+
+#vis.nodes_2$color.border <- "black"
+vis.nodes_2$color.highlight.background <- "pink"
+vis.nodes_2$color.highlight.border <- "darkred"
+
+vis.links_2$color <- "black"    # line color  
+vis.links_2$arrows <- "middle" # arrows: 'from', 'to', or 'middle'
+#https://html-color-codes.info/color-names/
+visnet <- visNetwork(vis.nodes_2, vis.links_2, width = "100%", height = 1000) %>%
+  visGroups(groupname = "cube", 
+            shape = "icon", icon = list(code = "f0c0", size = 75, color = "RoyalBlue"), shadow = list(enabled = TRUE)) %>% 
+  visGroups(groupname = "rl",
+            shape = "icon", icon = list(code = "f0c0", size = 45, color = "SkyBlue"), shadow = list(enabled = TRUE)) %>% 
+  visGroups(groupname = "dm",
+            shape = "icon", icon = list(code = "f111", size = 20, color = "ForestGreen"), shadow = list(enabled = TRUE)) %>% 
+  visGroups(groupname = "cl",
+            shape = "icon", icon = list(code = "f111", size = 20, color = "Tomato"), shadow = list(enabled = TRUE)) %>% 
+  visGroups(groupname = "ods", 
+            shape = "icon", icon = list(code = "f1c0", size = 75, color = "Bisque"), shadow = list(enabled = TRUE)) %>%
+  visGroups(groupname = "no", 
+            shape = "icon", icon = list(code = "f00d", size = 75, color = "Gray"), shadow = list(enabled = TRUE)) %>% 
+  visLegend(main="Legend", position="right", ncol=1) %>%
+  addFontAwesome()
+visOptions(visnet, highlightNearest = TRUE, selectedBy = "targetLayer")
+
+# -------------------- Visualization type total
+vis.nodes <- rbind(vis.nodes_1, vis.nodes_2)
+vis.links <- rbind(vis.links_1, vis.links_2)
+
+vis.nodes <- vis.nodes[!duplicated(vis.nodes$id), ]
+
+#https://html-color-codes.info/color-names/
+visnet <- visNetwork(vis.nodes, vis.links, width = "100%", height = 1000) %>%
+  visGroups(groupname = "cube", 
+            shape = "icon", icon = list(code = "f0c0", size = 75, color = "RoyalBlue"), shadow = list(enabled = TRUE)) %>% 
+  visGroups(groupname = "rl",
+            shape = "icon", icon = list(code = "f0c0", size = 45, color = "SkyBlue"), shadow = list(enabled = TRUE)) %>% 
+  visGroups(groupname = "dm",
+            shape = "icon", icon = list(code = "f111", size = 20, color = "ForestGreen"), shadow = list(enabled = TRUE)) %>% 
+  visGroups(groupname = "cl",
+            shape = "icon", icon = list(code = "f111", size = 20, color = "Tomato"), shadow = list(enabled = TRUE)) %>% 
+  visGroups(groupname = "ods", 
+            shape = "icon", icon = list(code = "f1c0", size = 75, color = "Bisque"), shadow = list(enabled = TRUE)) %>%
+  visGroups(groupname = "no", 
+            shape = "icon", icon = list(code = "f00d", size = 75, color = "Gray"), shadow = list(enabled = TRUE)) %>% 
+  visLegend(main="Legend", position="right", ncol=1) %>%
+  addFontAwesome()
+visOptions(visnet, highlightNearest = TRUE, selectedBy = "targetLayer")
+
+nodes <- data.frame(id = 1:3)
+edges <- data.frame(from = c(1,2), to = c(1,3), value = c(1:2))
+
+edges$color <- palette()[edges$value]
+
+visNetwork(nodes, edges)
+# -------------------- Visualization type 2
+library(readr)
+romeo_hierarchy <- read_delim("C:/Users/DOKHAL/Desktop/SQLS/config/romeo_hierarchy.csv", 
+                              ";", escape_double = FALSE, trim_ws = TRUE)
+View(romeo_hierarchy)
+df2 <- cbind(df$sourceTableName3, df$targetLayer)
+names(df2) <- c("from","to")
+hierarchy <- rbind(romeo_hierarchy , df2)
+romeo.vertices <- data.frame(name = unique(c(as.character(hierarchy$from), as.character(hierarchy$to))) )
+mygraph <- graph_from_data_frame( hierarchy, vertices=romeo.vertices )
+library(ggraph)
+library(igraph)
+# create a data frame giving the hierarchical structure of your individuals. 
+# Origin on top, then groups, then subgroups
+d1 <- data.frame(from="origin", to=paste("group", seq(1,10), sep=""))
+d2 <- data.frame(from=rep(d1$to, each=10), to=paste("subgroup", seq(1,100), sep="_"))
+hierarchy <- rbind(d1, d2)
+# create a vertices data.frame. One line per object of our hierarchy, giving features of nodes.
+vertices <- data.frame(name = unique(c(as.character(hierarchy$from), as.character(hierarchy$to))) ) 
+# Create a graph object with the igraph library
+mygraph <- graph_from_data_frame( hierarchy, vertices=vertices )
+# This is a network object, you visualize it as a network like shown in the network section!
+# With igraph: 
+plot(mygraph, vertex.label="", edge.arrow.size=0, vertex.size=2)
+# With ggraph:
+ggraph(mygraph, layout = 'dendrogram', circular = FALSE) + 
+  geom_edge_link() +
+  theme_void() 
+ggraph(mygraph, layout = 'dendrogram', circular = TRUE) + 
+  geom_edge_diagonal() +
+  theme_void()
 # -------------------- GAMMEL 
 library('igraph')
 
