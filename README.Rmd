@@ -1,0 +1,65 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, echo = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-"
+)
+```
+
+# RoMEO 
+Retracing of Mapping Explicit to Objects (RoMEO)
+
+## Overview
+Extract relevant information from SQL scripts such as source and target tables. 
+
+## Assumptions
+- **Target table name:** In each sql script the target table name can be derived from the create (table, view, procedure) statement.
+
+## Configuration of patterns
+**Unvalid patterns:**
+```{r, echo = FALSE, results='asis'}
+library(knitr)
+pat <- "^.*Users.*?([A-Z]+).*"
+username <- gsub(pat, "\\1", getwd())
+filepath_root <- paste0("C:/Users/",username,"/Desktop/")
+unvalid_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_unvalid_pattern.csv"), head = FALSE)
+knitr::kable(unvalid_pattern)
+```
+**Valid patterns:**
+```{r, echo = FALSE, results='asis'}
+valid_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_valid_pattern.csv"), header = FALSE)
+knitr::kable(valid_pattern)
+```
+**Filter patterns:**
+```{r, echo = FALSE, results='asis'}
+filter_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_filter_pattern.csv"), header = FALSE)
+knitr::kable(filter_pattern)
+```
+**Aggregation patterns:**
+```{r, echo = FALSE, results='asis'}
+aggregation_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_aggregation_pattern.csv"), header = FALSE)
+knitr::kable(aggregation_pattern)
+```
+**Create patterns:**
+```{r, echo = FALSE, results='asis'}
+create_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_create_pattern.csv"), header = FALSE)
+knitr::kable(create_pattern)
+```
+**Insert patterns:**
+```{r, echo = FALSE, results='asis'}
+insert_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_insert_pattern.csv"), header = FALSE)
+knitr::kable(insert_pattern)
+```
+
+## Open issues
+1. **Multiple *insert into* statements**: SQL scripts can have multiple insert statements. This implies that the relation is $n x m$ for $n$ = target table and $m$ = source table.
+2. **Scripts without *from* statements**: SQL scripts can just serve the sole purpose to calculate are prepare something and do not refer to a source table load.
+3. **Selected attributes**: Selected attributes shall be extracted and thus create per script with one target table and one source table a $1 x n x m$ relation with 1 = target table, $n$ = source table(s), and $m$ = attribute(s).
+4. **Automated join loop**: Extracted SQL script shall be joined until end.
+5. **Re-organization of columns in output**: Columns in the output table shall reflect lineage steps or layer design (however in legacy systems layer design is often violated).
