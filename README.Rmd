@@ -63,3 +63,6 @@ knitr::kable(insert_pattern)
 3. **Selected attributes**: Selected attributes shall be extracted and thus create per script with one target table and one source table a $1 x n x m$ relation with 1 = target table, $n$ = source table(s), and $m$ = attribute(s).
 4. **Automated join loop**: Extracted SQL script shall be joined until end.
 5. **Re-organization of columns in output**: Columns in the output table shall reflect lineage steps or layer design (however in legacy systems layer design is often violated).
+6. **No comments**: Lines which are commented out shall be skipped.
+7. **Line breaks**: Dealing with linebreaks after SQL statements. Impact is that information will not be retrieved. At the moment FROM is cleaned but excludes JOIN etc.
+8. **Lineage Breaks**: Output table with lineage breaks (tables which do not go down to source). Data migration tables, static tables etc.

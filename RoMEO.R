@@ -15,7 +15,7 @@ library(collapsibleTree)
 library(reshape2)
 library(ggplot2)
 # ==================== Set Directory
-sqlCollection <- "1"
+sqlCollection <- "business"
 #sqlCollection <- "Neuer Ordner"
 #sqlCollection <- "etl_210211_1623"
 #sqlCollection <- "hbi"
@@ -33,7 +33,7 @@ unvalid_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_unvalid_pattern.cs
 valid_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_valid_pattern.csv"), header = FALSE)
 filter_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_filter_pattern.csv"), header = FALSE)
 aggregation_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_aggregation_pattern.csv"), header = FALSE)
-create_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_create_pattern.csv"), header = FALSE)
+create_pattern <- as.vector(read.csv(paste0(filepath_root,"ROMEO/romeo_create_pattern.csv"), header = FALSE))
 insert_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_insert_pattern.csv"), header = FALSE)
 schema_cleansing_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_schema_cleansing_pattern.csv"), header = FALSE)
 database_cleansing_pattern <- read.csv(paste0(filepath_root,"ROMEO/romeo_database_cleansing_pattern.csv"), header = FALSE)
@@ -46,7 +46,7 @@ df.quality_check <- data.frame(scriptName=as.character(), errorMessage=as.charac
 df.quality_check_names <- names(df.quality_check)
 
 # ==================== Extraction of Data
-i <- 1
+j <- 1
 for (i in files) {
   ### for each sql file an error handling table
   df.error_handling <- data.frame(romeoStep=as.character(), rawOutput=as.character())
@@ -62,13 +62,23 @@ for (i in files) {
     Corpus(vs, readerControl=list(readPlain, language="en", load=TRUE))
   }
   
-  #rawCorpus <- createCorpus(files[1]) # just for coding / debugging
-  rawCorpus <- createCorpus(i)
-  analysisCorpus <- corpus(rawCorpus)
+  rawCorpus <- createCorpus(files[2]) # just for coding / debugging
   
+  rawCorpus <- createCorpus(i)
+  
+  analysisCorpus <- corpus(rawCorpus)
+  # Cleaning up line breaks after FROM statement
+  ids <- cumsum(analysisCorpus=="FROM")
+  select <- !analysisCorpus=="FROM*"
+  splitted <- split(analysisCorpus[select], ids[select])
+  analysisCorpus_FROM <- sapply(splitted, paste, collapse=" ")
+  analysisCorpus_FROM <- corpus(analysisCorpus_FROM)
+  
+  analysisCorpus <- c(analysisCorpus_FROM,analysisCorpus,recursive=FALSE)
   #################### START OF TEXT MINING INTELLIGENCE
   # -------------------- Text Mining: Extraction of the name of the script assuming it is the name of the target table
   sql_script_name <- corpus_segment(analysisCorpus, pattern = create_pattern) 
+  
   if (length(sql_script_name)>0) { # start of dirty hack
     df.temp <- data.frame("1 Extract Pattern of Procedure", sql_script_name)
     names(df.temp) <- df.error_handling_names
@@ -78,7 +88,7 @@ for (i in files) {
     sql_script_name <- sql_script_name[1]
     sql_script_name
     
-    files_list[i,2] <- "processed"
+    files_list[j,2] <- "processed"
     # -------------------- Text Mining: Extraction of TARGET TABLE NAME identified by "insert into"-prefix per line
     insert_into <- corpus_segment(analysisCorpus, pattern = insert_pattern) 
     insert_into <- data.frame(insert_into)
@@ -232,9 +242,9 @@ for (i in files) {
     path <- paste(filepath_output,"files_processed",".csv",sep="")
     write.csv(files_list, file = path, row.names = FALSE)
   }else{
-    files_list[i,2] <- "something fishy here"
+    files_list[j,2] <- "something fishy here"
   } # end of dirty hack
-  i <- i+1
+  j <- j+1
 } # the end
 
 # ==================== Postprocessing of Data
@@ -309,3 +319,5 @@ df.Total <- join(df.new_x, df.new_y, by = "key", type = "left", match = "all")
 df.Total <- rename(df.Total, c("key"="sourceTableName"))
 names(df.Total)[length(names(df.Total))]<-"key" 
 df.Total <- join(df.Total, df.new_y, by = "key", type = "left", match = "all")
+
+df.Total <- join(df.Total, input, by = "key", type = "left", match = "all")
